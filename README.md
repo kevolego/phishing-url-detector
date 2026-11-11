@@ -59,6 +59,8 @@ and compare it against this heuristic baseline.
 Open `web/index.html` directly, or use the **[hosted version](https://kevolego.github.io/phishing-url-detector/)**.
 Paste a link, get a verdict. Nothing leaves the browser — ideal for
 sharing with non-technical people who just want to check a suspicious link.
+GitHub Pages deploys `web/` on pushes to `master`; set the repository's Pages
+source to **GitHub Actions** in Settings → Pages to enable deployment.
 
 ### 2. Python CLI (for scripting / batch checks)
 
