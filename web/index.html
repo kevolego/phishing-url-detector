@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>URL Scanner — check a link before you click it</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔎</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0E1420;
+    --surface: #161E2D;
+    --surface-raised: #1C2537;
+    --border: #2A3447;
+    --text: #E9ECF2;
+    --text-muted: #8C97AC;
+    --text-dim: #5C6880;
+    --accent: #D9A441;
+    --safe: #4FB286;
+    --warn: #D9A441;
+    --danger: #E2574C;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Space Grotesk', system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #F4F3EF;
+      --surface: #FFFFFF;
+      --surface-raised: #FFFFFF;
+      --border: #DEDBD2;
+      --text: #1B1F2A;
+      --text-muted: #5B6273;
+      --text-dim: #8A91A1;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1420; --surface: #161E2D; --surface-raised: #1C2537;
+    --border: #2A3447; --text: #E9ECF2; --text-muted: #8C97AC; --text-dim: #5C6880;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+    background: var(--bg); z-index: 10;
+  }
+  a { color: var(--accent); }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 13px; color: var(--text-dim);
+    margin-bottom: 18px;
+  }
+  .eyebrow .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--safe);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--safe) 20%, transparent);
+  }
+  h1 {
+    font-size: clamp(30px, 5.5vw, 42px); line-height: 1.1; font-weight: 700;
+    margin: 0 0 14px; letter-spacing: -0.01em;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .sub { color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 54ch; margin: 0; }
+
+  .scan-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; margin-top: 32px;
+  }
+  .input-row { display: flex; gap: 10px; }
+  #urlInput {
+    flex: 1; min-width: 0;
+    background: var(--surface-raised); border: 1px solid var(--border); border-radius: 9px;
+    color: var(--text); font-family: var(--mono); font-size: 14.5px;
+    padding: 13px 14px; outline: none;
+  }
+  #urlInput:focus { border-color: var(--accent); }
+  #scanBtn {
+    background: var(--accent); color: #1B1403; border: none; border-radius: 9px;
+    font-family: var(--sans); font-weight: 600; font-size: 15px;
+    padding: 0 22px; cursor: pointer; white-space: nowrap;
+  }
+  #scanBtn:active { transform: translateY(1px); }
+  #scanBtn:disabled { opacity: 0.5; cursor: default; }
+  .hint { font-size: 13px; color: var(--text-dim); margin: 12px 2px 0; }
+
+  #result { margin-top: 24px; display: none; }
+  .verdict-card {
+    border-radius: 14px; border: 1px solid var(--border); overflow: hidden;
+  }
+  .verdict-head {
+    padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .verdict-head .label { font-size: 13px; color: var(--text-muted); font-family: var(--mono); margin-bottom: 6px; }
+  .verdict-head .verdict-text { font-size: 22px; font-weight: 700; }
+  .verdict-head .score { font-family: var(--mono); font-size: 28px; font-weight: 500; }
+  .verdict-head .score span { font-size: 15px; color: var(--text-muted); }
+
+  .v-safe .verdict-head { background: color-mix(in srgb, var(--safe) 12%, var(--surface)); }
+  .v-safe .verdict-text, .v-safe .score { color: var(--safe); }
+  .v-warn .verdict-head { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+  .v-warn .verdict-text, .v-warn .score { color: var(--warn); }
+  .v-danger .verdict-head { background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
+  .v-danger .verdict-text, .v-danger .score { color: var(--danger); }
+
+  .verdict-body { background: var(--surface); padding: 20px 24px 24px; }
+  .meta-row {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-family: var(--mono); font-size: 13px; color: var(--text-muted);
+    padding: 9px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .meta-row:last-of-type { border-bottom: none; }
+  .meta-row .k { color: var(--text-dim); }
+  .meta-row .v { color: var(--text); word-break: break-all; text-align: right; }
+
+  .reasons { margin-top: 18px; }
+  .reasons h3 {
+    font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 0 0 10px;
+  }
+  .reason-item {
+    display: flex; gap: 10px; font-size: 14px; line-height: 1.5;
+    padding: 8px 0; border-top: 1px solid var(--border);
+  }
+  .reason-item:first-child { border-top: none; }
+  .reason-item .pts {
+    font-family: var(--mono); font-size: 12.5px; color: var(--accent);
+    flex-shrink: 0; width: 34px;
+  }
+  .no-flags { color: var(--text-muted); font-size: 14px; }
+
+  details.explain { margin-top: 36px; }
+  summary {
+    cursor: pointer; font-size: 14px; color: var(--text-muted); font-family: var(--mono);
+    padding: 10px 0;
+  }
+  .explain-body { color: var(--text-muted); font-size: 14.5px; line-height: 1.7; padding: 4px 0 0; }
+  .explain-body ul { padding-left: 20px; margin: 10px 0; }
+  .explain-body li { margin: 6px 0; }
+
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--text-dim); line-height: 1.6;
+  }
+
+  @media (max-width: 520px) {
+    .input-row { flex-direction: column; }
+    #scanBtn { padding: 13px; }
+    .verdict-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    #result[data-show="1"] { animation: rise 0.35s ease; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow"><span class="dot"></span>runs entirely in your browser — nothing is sent anywhere</div>
+    <h1>Paste a link.<br>See if it's <em>trying to fool you</em>.</h1>
+    <p class="sub">Checks a URL for the tricks phishing pages actually use — disguised hosts, lookalike domains, hidden IP addresses, encoded links — and tells you exactly why it's flagging something.</p>
+  </header>
+
+  <div class="scan-box">
+    <div class="input-row">
+      <input id="urlInput" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="paste a link here, e.g. http://paypal.com@192.168.1.5/login" aria-label="URL to scan">
+      <button id="scanBtn">Scan link</button>
+    </div>
+    <p class="hint">Nothing leaves your device — the link is never sent to a server.</p>
+  </div>
+
+  <div id="result"></div>
+
+  <details class="explain">
+    <summary>What this actually checks for</summary>
+    <div class="explain-body">
+      <p>Before scoring, the link is decoded and unpacked the same way a browser would read it — so tricks meant to hide the real destination get caught:</p>
+      <ul>
+        <li><strong>Hidden host behind @</strong> — <code>paypal.com@evil.net</code> looks like PayPal but actually goes to evil.net</li>
+        <li><strong>Raw IP address</strong> instead of a real domain name</li>
+        <li><strong>Lookalike characters</strong> — domains using Cyrillic or other scripts to mimic Latin letters</li>
+        <li><strong>Percent/hex encoding</strong> hiding the real text</li>
+        <li><strong>Typosquatting</strong> — close misspellings of big brand names</li>
+        <li><strong>URL shorteners</strong>, risky top-level domains, and excessive subdomains</li>
+      </ul>
+      <p>Each check adds points toward a 0–100 score with a plain-English reason — never a black-box guess.</p>
+    </div>
+  </details>
+
+  <footer>
+    Heuristic tool for educational and defensive use. A low score isn't a guarantee a link is safe — when in doubt, don't enter credentials, and verify through an official channel.
+  </footer>
+</div>
+
+<script>
+// ---------- punycode decode (RFC 3492), minimal implementation ----------
+function punycodeDecode(input) {
+  const base = 36, tMin = 1, tMax = 26, skew = 38, damp = 700, initialBias = 72, initialN = 128;
+  function adapt(delta, numPoints, firstTime) {
+    delta = firstTime ? Math.floor(delta / damp) : delta >> 1;
+    delta += Math.floor(delta / numPoints);
+    let k = 0;
+    while (delta > ((base - tMin) * tMax) >> 1) { delta = Math.floor(delta / (base - tMin)); k += base; }
+    return k + Math.floor(((base - tMin + 1) * delta) / (delta + skew));
+  }
+  let n = initialN, i = 0, bias = initialBias;
+  const output = [];
+  let d = input.lastIndexOf('-');
+  if (d < 0) d = 0;
+  for (let j = 0; j < d; j++) {
+    if (input.charCodeAt(j) >= 0x80) throw new Error('bad input');
+    output.push(input.charCodeAt(j));
+  }
+  let index = d > 0 ? d + 1 : 0;
+  const inputLength = input.length;
+  while (index < inputLength) {
+    const oldi = i;
+    let w = 1, k = base;
+    while (true) {
+      if (index >= inputLength) throw new Error('bad input');
+      const c = input.charCodeAt(index++);
+      let digit;
+      if (c >= 48 && c <= 57) digit = c - 22;
+      else if (c >= 65 && c <= 90) digit = c - 65;
+      else if (c >= 97 && c <= 122) digit = c - 97;
+      else throw new Error('bad input');
+      i += digit * w;
+      const t = k <= bias ? tMin : (k >= bias + tMax ? tMax : k - bias);
+      if (digit < t) break;
+      w *= (base - t);
+      k += base;
+    }
+    const out = output.length + 1;
+    bias = adapt(i - oldi, out, oldi === 0);
+    n += Math.floor(i / out);
+    i %= out;
+    output.splice(i, 0, n);
+    i++;
+  }
+  return String.fromCodePoint(...output);
+}
+function decodePunycodeHost(host) {
+  if (!host) return host;
+  try {
+    return host.split('.').map(label => {
+      if (label.toLowerCase().startsWith('xn--')) {
+        return punycodeDecode(label.slice(4));
+      }
+      return label;
+    }).join('.');
+  } catch (e) { return host; }
+}
+
+// ---------- normalize ----------
+function percentDecode(url) {
+  let decoded = url;
+  for (let i = 0; i < 3; i++) {
+    let next;
+    try { next = decodeURIComponent(decoded); } catch (e) { break; }
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+function stripControlChars(url) {
+  return url.replace(/[\u200B-\u200F\u202A-\u202E\t\r\n]/g, '').trim();
+}
+function isIPAddress(host) {
+  if (!host) return false;
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+    return host.split('.').every(p => Number(p) >= 0 && Number(p) <= 255);
+  }
+  if (/^[0-9a-fA-F:]+$/.test(host) && host.includes(':')) return true;
+  return false;
+}
+function normalize(raw) {
+  const original = raw;
+  let url = stripControlChars(raw);
+  url = percentDecode(url);
+  if (!/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(url)) url = 'http://' + url;
+
+  let hasUserinfo = false, displayedBeforeAt = null, realHost = null;
+  // manual parse of authority to catch the @ trick even with malformed URLs
+  const schemeMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\//);
+  const scheme = schemeMatch ? schemeMatch[1].toLowerCase() : 'http';
+  const rest = url.slice(schemeMatch ? schemeMatch[0].length : 0);
+  const pathStart = rest.search(/[\/?#]/);
+  const authority = pathStart === -1 ? rest : rest.slice(0, pathStart);
+  const pathAndQuery = pathStart === -1 ? '' : rest.slice(pathStart);
+
+  if (authority.includes('@')) {
+    hasUserinfo = true;
+    const lastAt = authority.lastIndexOf('@');
+    displayedBeforeAt = authority.slice(0, lastAt);
+    realHost = authority.slice(lastAt + 1).split(':')[0];
+  } else {
+    realHost = authority.split(':')[0];
+  }
+  realHost = (realHost || '').toLowerCase();
+
+  const decodedHost = decodePunycodeHost(realHost);
+  const isPunycode = realHost.startsWith('xn--') || realHost.includes('.xn--');
+  const homographSuspected = isPunycode && decodedHost !== realHost && /[^\x00-\x7F]/.test(decodedHost);
+
+  let path = '', query = '';
+  const qIdx = pathAndQuery.indexOf('?');
+  if (qIdx === -1) { path = pathAndQuery; } else { path = pathAndQuery.slice(0, qIdx); query = pathAndQuery.slice(qIdx + 1); }
+
+  return {
+    originalUrl: original,
+    normalizedUrl: scheme + '://' + authority + pathAndQuery,
+    host: realHost,
+    decodedHost,
+    isPunycode,
+    homographSuspected,
+    hasUserinfoTrick: hasUserinfo,
+    displayedBeforeAt,
+    isIpHost: isIPAddress(realHost),
+    wasPercentEncoded: original !== decodeURIComponentSafe(original),
+    path, query, scheme,
+  };
+}
+function decodeURIComponentSafe(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
+
+// ---------- features + scoring ----------
+const BRAND_TARGETS = ["paypal","google","microsoft","apple","amazon","netflix","facebook","instagram",
+  "whatsapp","bank","chase","wellsfargo","dhl","fedex","coinbase","binance","outlook","office365"];
+const SUSPICIOUS_TLDS = new Set(["zip","mov","xyz","top","gq","tk","ml","ga","cf","work","click","link","country","stream","download"]);
+const SHORTENER_DOMAINS = new Set(["bit.ly","tinyurl.com","goo.gl","t.co","ow.ly","is.gd","buff.ly","rebrand.ly","shorturl.at","cutt.ly"]);
+const SENSITIVE_KEYWORDS = ["login","verify","account","update","secure","signin","banking","confirm","password","suspend","unlock","billing"];
+
+function shannonEntropy(s) {
+  if (!s) return 0;
+  const counts = {};
+  for (const c of s) counts[c] = (counts[c] || 0) + 1;
+  let ent = 0;
+  for (const c in counts) {
+    const p = counts[c] / s.length;
+    ent -= p * Math.log2(p);
+  }
+  return ent;
+}
+function similarityRatio(a, b) {
+  // Levenshtein-based ratio, mirrors Python's difflib-ish similarity closely enough for thresholding
+  const al = a.length, bl = b.length;
+  if (al === 0 && bl === 0) return 1;
+  const dp = Array(al + 1).fill(null).map(() => Array(bl + 1).fill(0));
+  for (let i = 0; i <= al; i++) dp[i][0] = i;
+  for (let j = 0; j <= bl; j++) dp[0][j] = j;
+  for (let i = 1; i <= al; i++) {
+    for (let j = 1; j <= bl; j++) {
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  const dist = dp[al][bl];
+  return 1 - dist / Math.max(al, bl, 1);
+}
+function brandFlags(host) {
+  const flags = [];
+  const hostCore = host.replace(/\.(com|net|org|co|io|info|biz).*$/, '');
+  const tokens = hostCore.split(/[.\-]/);
+  for (const brand of BRAND_TARGETS) {
+    if (hostCore.includes(brand)) {
+      if (!host.endsWith('.' + brand + '.com') && hostCore !== brand) {
+        flags.push(`contains brand name '${brand}' but is not the official domain`);
+      }
+      continue;
+    }
+    let bestRatio = similarityRatio(brand, hostCore), bestTok = hostCore;
+    for (const tok of tokens) {
+      if (!tok) continue;
+      const r = similarityRatio(brand, tok);
+      if (r > bestRatio) { bestRatio = r; bestTok = tok; }
+    }
+    if (bestRatio > 0.75) {
+      flags.push(`looks very similar to brand '${brand}' (segment '${bestTok}', similarity ${bestRatio.toFixed(2)})`);
+    }
+  }
+  return flags;
+}
+function extractFeatures(n) {
+  const url = n.normalizedUrl, host = n.host, path = n.path || '', query = n.query || '';
+  const subdomainCount = Math.max((host.match(/\./g) || []).length - 1, 0);
+  const tld = host.includes('.') ? host.split('.').pop() : '';
+  const digitCount = (host.match(/\d/g) || []).length;
+  return {
+    urlLength: url.length,
+    hostLength: host.length,
+    subdomainCount,
+    isIpHost: n.isIpHost,
+    hasUserinfoTrick: n.hasUserinfoTrick,
+    isPunycode: n.isPunycode,
+    homographSuspected: n.homographSuspected,
+    wasPercentEncoded: n.wasPercentEncoded,
+    usesHttps: n.scheme === 'https',
+    hasHyphenInHost: host.includes('-'),
+    digitRatioInHost: host.length ? digitCount / host.length : 0,
+    hostEntropy: Math.round(shannonEntropy(host) * 100) / 100,
+    suspiciousTld: SUSPICIOUS_TLDS.has(tld),
+    isKnownShortener: SHORTENER_DOMAINS.has(host),
+    sensitiveKeywordHits: SENSITIVE_KEYWORDS.filter(kw => (path + query).toLowerCase().includes(kw)),
+    brandFlags: brandFlags(host),
+    excessiveSubdomains: subdomainCount >= 3,
+    longUrl: url.length > 75,
+  };
+}
+function scoreFeatures(f) {
+  let points = 0;
+  const reasons = [];
+  function add(cond, weight, reason) {
+    if (cond) { points += weight; reasons.push({ weight, reason }); }
+  }
+  add(f.isIpHost, 25, "host is a raw IP address instead of a domain name");
+  add(f.hasUserinfoTrick, 25, "URL uses '@' to disguise the real destination host");
+  add(f.homographSuspected, 30, "punycode host decodes to non-ASCII lookalike characters (homograph attack)");
+  add(f.wasPercentEncoded, 10, "URL was percent/hex encoded");
+  add(!f.usesHttps, 8, "no HTTPS");
+  add(f.suspiciousTld, 12, "uses a TLD commonly abused for phishing");
+  add(f.isKnownShortener, 15, "URL shortener hides the real destination");
+  add(f.excessiveSubdomains, 15, "excessive subdomains (common cloaking technique)");
+  add(f.longUrl, 5, "unusually long URL");
+  add(f.hostEntropy > 4.0, 10, "high entropy / random-looking domain name");
+  add(f.sensitiveKeywordHits.length > 0, 10, `sensitive keywords in path/query: [${f.sensitiveKeywordHits.join(', ')}]`);
+  add(f.brandFlags.length > 0, 25, "brand impersonation suspected: " + f.brandFlags.join('; '));
+  points = Math.min(points, 100);
+  let verdict, cls;
+  if (points >= 60) { verdict = "Phishing — high confidence"; cls = 'v-danger'; }
+  else if (points >= 30) { verdict = "Suspicious — review manually"; cls = 'v-warn'; }
+  else { verdict = "Likely safe"; cls = 'v-safe'; }
+  return { score: points, verdict, cls, reasons };
+}
+
+// ---------- UI wiring ----------
+const input = document.getElementById('urlInput');
+const btn = document.getElementById('scanBtn');
+const result = document.getElementById('result');
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function runScan() {
+  const raw = input.value.trim();
+  if (!raw) { input.focus(); return; }
+  let n, feats, res;
+  try {
+    n = normalize(raw);
+    feats = extractFeatures(n);
+    res = scoreFeatures(feats);
+  } catch (e) {
+    result.style.display = 'block';
+    result.setAttribute('data-show', '1');
+    result.innerHTML = `<div class="verdict-card v-warn"><div class="verdict-head"><div><div class="label">could not parse</div><div class="verdict-text">Not a readable link</div></div></div></div>`;
+    return;
+  }
+
+  const hostLine = n.decodedHost !== n.host
+    ? `${esc(n.host)} <span style="color:var(--text-dim)">→ decodes to</span> ${esc(n.decodedHost)}`
+    : esc(n.host);
+
+  let reasonsHtml = '<p class="no-flags">No red flags detected.</p>';
+  if (res.reasons.length) {
+    reasonsHtml = res.reasons.map(r =>
+      `<div class="reason-item"><span class="pts">+${r.weight}</span><span>${esc(r.reason)}</span></div>`
+    ).join('');
+  }
+
+  result.innerHTML = `
+    <div class="verdict-card ${res.cls}">
+      <div class="verdict-head">
+        <div>
+          <div class="label">verdict</div>
+          <div class="verdict-text">${res.verdict}</div>
+        </div>
+        <div class="score">${res.score}<span>/100</span></div>
+      </div>
+      <div class="verdict-body">
+        <div class="meta-row"><span class="k">host</span><span class="v">${hostLine}</span></div>
+        ${n.hasUserinfoTrick ? `<div class="meta-row"><span class="k">displayed as</span><span class="v">${esc(n.displayedBeforeAt)}</span></div>` : ''}
+        <div class="reasons">
+          <h3>Why</h3>
+          ${reasonsHtml}
+        </div>
+      </div>
+    </div>
+  `;
+  result.style.display = 'block';
+  result.setAttribute('data-show', '1');
+}
+
+btn.addEventListener('click', runScan);
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter') runScan(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# Realistic phishing-kit style URLs (structural patterns only — none are live/real)
+# Good for stress-testing the detector without touching an actual phishing tool.
+
+# --- credential harvesting path patterns ---
+http://secure-login-update.com/wp-admin/verify-account.php
+http://facebook-security-check.net/login.php?next=home
+http://instagram-copyright-appeal.info/signin
+http://mycompany-okta-sso.xyz/login?redirect=portal
+
+# --- @ trick (displayed host vs real host) ---
+http://www.facebook.com@185.23.44.9/login
+http://apple.com@secure-icloud-verify.ru/signin
+
+# --- shortened links (common for mass distribution) ---
+http://bit.ly/3fake-login
+http://tinyurl.com/verify-paypal-now
+http://cutt.ly/account-suspended
+
+# --- lookalike / typosquatted domains ---
+http://faceb00k-login.com/
+http://paypa1.com/signin
+http://micros0ft-office365.com/login
+http://netfliix-billing.com/update-payment
+
+# --- punycode / homograph ---
+http://xn--80ak6aa92e.com/login
+http://xn--pple-43d.com/id-verify
+
+# --- IP address hosts (common for quickly-spun-up kits) ---
+http://45.33.32.156/wp-login.php
+http://192.168.56.101:8080/portal/login
+
+# --- excessive subdomains (cloaking the real domain) ---
+http://login.secure.account.verify.suspicious-domain.tk/
+http://www.paypal.com.confirm-identity.security-check.top/
+
+# --- percent/hex encoded ---
+http://%66%61%63%65%62%6f%6f%6b.com-login.xyz/
